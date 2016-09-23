@@ -1,0 +1,104 @@
+After installing proxmox, from the proxmox web interface, a new bridged interface has to be addedd. The default interface added by proxmox is called vmbr0. So we have to add vmbr1 interface, with a private ip address.
+
+Let's assume our private ip address is: 192.168.1.1.
+
+We add vmbr1 interface, with ip 192.168.1.1, netmask 255.255.255.0 then we have to reboot the proxmox server so the changes can take effect.
+
+We creat then a new virtual machine in proxmox and for the network card of that machine we select as a bridge interface the newly created vmbr1 interface.
+
+On the windows machine, we have to add the following ip address:
+
+ip address: 192.168.1.2
+netmask: 255.255.255.0
+gateway: 192.168.1.1
+
+For DNS servers we can use the servers from Google: 8.8.8.8, 8.8.4.4
+
+After that, ssh on the proxmox server as root
+
+Adding the default nameservers to /etc/resolv.conf file and save the file after the changes:
+
+nameserver 8.8.8.8
+nameserver 8.8.4.4
+
+Creating the iptables port forwarding rules
+###
+We go in the /etc/init.d/ folder where we place the script. If the server reboots the script will be loaded automatically and the rules applied.
+
+### THE PORT FORWARDING RULES FORMAT ###
+
+iptables -t nat -A PREROUTING -d PUBLIC_IP_OF_THE_PROXMOX_SERVER -p protocol (tcp/udp/icmp/all) --dport (destination port number on the public ip of proxmox) -j DNAT --to-destination virtual_machine_private_ip:port
+iptables -t nat -A POSTROUTING -d virtual_machine_private_ip -p protocol (tc/udp/icmp/all) --dport port -j MASQUERADE
+
+So let's assume we want to do a remote desktop connection, protocol tcp, on the windows machine with the ip 192.168.1.2 on port 3389. The rule is as follows
+
+iptables -t nat -A PREROUTING -d PUBLIC_IP_OF_THE_PROXMOX_SERVER -p protocol tcp --dport 3389 -j DNAT --to-destination 192.168.1.2:3389
+iptables -t nat -A POSTROUTING -d 192.168.1.2:3389 -p tcp --dport 3389 -j MASQUERADE
+
+The two rules above will be applied for each protocol/port combination
+
+##########################################################################################
+
+The script looks as follows (it is a simple bash script with iptables rules)
+
+#!/bin/bash
+
+#
+#created by Bogdan Stoica on 24/09/2015
+#email: bogdan@vrem.ro
+#web: https://linux-master.ro
+#
+#this script will run automatically after server reboot
+
+#configuration
+#promox server has a public internet ip address which is 82.208.129.119 assigned to vmbr0 interface
+#created a new brdige interface vmbr1 with the private ip 192.168.1.1
+
+#windows virtual machine has ip 192.168.1.2
+
+#permit access to the internet from the virtual machines (private lan network 10.2121.0/24)
+iptables -t nat -A POSTROUTING -s '192.168.1.0/24' -o vmbr0 -j MASQUERADE
+
+#remote desktop to windows (all requests made on the public ip to por 3333 are redirected to windows box to port 3389)
+iptables -t nat -A PREROUTING -d 82.208.129.119/32 -p tcp --dport 3333 -j DNAT --to-destination 192.168.1.2:3389
+iptables -t nat -A POSTROUTING -d 192.168.1.2 -p tcp --dport 3389 -j MASQUERADE
+
+#port 700 on windows
+iptables -t nat -A PREROUTING -d 82.208.129.119/32 -p tcp --dport 700 -j DNAT --to-destination 192.168.1.2:700
+iptables -t nat -A POSTROUTING -d 192.168.1.2 -p tcp --dport 700 -j MASQUERADE
+
+port 1433 on windows
+iptables -t nat -A PREROUTING -d 82.208.129.119/32 -p tcp --dport 1433 -j DNAT --to-destination 192.168.1.2:1433
+iptables -t nat -A POSTROUTING -d 192.168.1.2 -p tcp --dport 1433 -j MASQUERADE
+
+---------------------------------------------------------
+#
+#created by Bogdan Stoica on 30/08/2016
+#email: bogdan@898.ro.ro
+#web: https://898.ro
+#
+
+LOCALNET="192.168.1.0/24"
+WAN="vmbr0"
+WANIP="82.208.129.119"
+WHM="192.168.1.2"
+
+iptables -t nat -A POSTROUTING -s '192.168.1.0/24' -o $WAN -j MASQUERADE
+
+# ssh to whm machine on port 2222
+iptables -t nat -A PREROUTING -d 82.208.129.119/32 -p tcp --dport 2222 -j DNAT --to-destination 192.168.1.2:22
+iptables -t nat -A POSTROUTING -d 192.168.1.2 -p tcp --dport 22 -j MASQUERADE
+
+# forward specific tcp ports for whm
+for i in 20 21 25 26 53 80 110 143 443 465 587 993 995 2077 2078 2079 2080 2081 2082 2083 2095 2096 2086 2087 6277
+do
+        iptables -t nat -I PREROUTING -i $WAN -d $WANIP -p tcp --dport $i -j DNAT --to $WHM:$i
+        iptables -I FORWARD -i $WAN -d $WHM -p tcp --dport $i -j ACCEPT
+done
+
+# forward specific udp ports for WHM
+for j in 20 21 53 6277
+do
+        iptables -t nat -I PREROUTING -i $WAN -d $WANIP -p udp --dport $i -j DNAT --to $WHM:$i
+        iptables -I FORWARD -i $WAN -d $WHM -p udp --dport $i -j ACCEPT
+done
