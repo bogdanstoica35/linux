@@ -136,6 +136,7 @@ service httpd restart
 #echo "* * * * *     cd /home/serv$SRV/serv$SRV.rainy.la/cgi-bin;./transfer.pl >/dev/null 2>&1" >> /var/spool/cron/root
 service crond restart
 
+# make the installer cgi script executable
 chmod +x /home/serv$SRV/serv$SRV.rainy.la/cgi-bin/install_fs.cgi
 
 # create simple script for service monitoring (httpd, nginx)
