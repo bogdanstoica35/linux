@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#
+#created by Bogdan Stoica on 30/08/2016
+#email: bogdan@898.ro.ro
+#web: https://898.ro
+#
+
+# enable forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# define vars
+LOCALNET="192.168.1.0/24"
+WAN="eth0"
+WANIP="88.198.19.164/32"
+WINDOWS="192.168.1.2"
+
+# enable traffic from the windows machine to the internet
+iptables -t nat -A POSTROUTING -s '192.168.1.0/24' -o $WAN -j MASQUERADE
+
+# RDP to Windows virtual machine on port 3389 from the outside world
+iptables -t nat -A PREROUTING -d $WANIP -p tcp --dport 3389 -j DNAT --to-destination $WINDOWS:3389
+iptables -t nat -A POSTROUTING -d $WINDOWS -p tcp --dport 3389 -j MASQUERADE
