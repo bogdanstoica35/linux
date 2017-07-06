@@ -1,0 +1,10 @@
+[VPS] $ rm -f /etc/ssh/ssh_host_*
+
+[VPS] $ cat << EOF > /etc/rc2.d/S15ssh_gen_host_keys
+#!/bin/sh
+ssh-keygen -f /etc/ssh/ssh_host_rsa_key -t rsa -N ''
+ssh-keygen -f /etc/ssh/ssh_host_dsa_key -t dsa -N ''
+rm -f \$0
+EOF
+
+[VPS] $ chmod a+x /etc/rc2.d/S15ssh_gen_host_keys
