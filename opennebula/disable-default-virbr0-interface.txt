@@ -1,6 +1,0 @@
-# to disable it
-virsh net-autostart default --disable (to prevent start; requires reboot)
-virsh net-destroy default (to destroy it while server online)
-
-# to enable it again
-virsh net-autostart default
