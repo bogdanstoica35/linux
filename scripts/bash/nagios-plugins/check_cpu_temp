@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# check_cpu_temp
+# Bogdan Stoica - 22/02/2019
+
+# Nagios plugin to check the CPU(s) temperature using lm_sensors
+
+. /usr/lib64/nagios/plugins/utils.sh
+
+PROGNAME=`basename $0`
+VERSION="0.1"
+
+# some default variables
+SENSORS="/bin/sensors"
+SOCKETS=$(grep "physical id" /proc/cpuinfo | sort -u | wc -l)
+CORES=$(grep -c "processor" /proc/cpuinfo)
+REAL_CORES_EACH_CPU=$( awk "BEGIN {print $CORES/$SOCKETS/2}")
+
+###
+print_version() {
+    echo "$PROGNAME v$VERSION"
+}
+###
+
+## check if lm_sensors is installed
+hash "$SENSORS" 2>/dev/null || { echo >&2 "It requires sensor but it's not installed.  Aborting now."; exit 1; }
+
+# determine default HIGH/CRIT values
+HIGH=$($SENSORS | grep Core | head -1 | awk '{print int($6)}')
+CRIT=$($SENSORS | grep Core | head -1 | awk '{print int($9)}')
+
+# save CPUs avg temperature to file(s)
+$SENSORS | grep Core | head -"$REAL_CORES_EACH_CPU" | awk '{print int($3)}' > cpu0.txt
+$SENSORS | grep Core | tail -"$REAL_CORES_EACH_CPU" | awk '{print int($3)}' > cpu1.txt
+
+# calculate AVG temp for each of the physical CPUs
+CPU0_AVG=$(awk 'NR>1 {avg+=$1} END {printf("%.0f",avg*1.0/(NR-1))}' < cpu0.txt)
+CPU1_AVG=$(awk 'NR>1 {avg+=$1} END {printf("%.0f",avg*1.0/(NR-1))}' < cpu1.txt)
+
+# delete temporary files
+rm -f cpu0.txt cpu1.txt
+
+if [ "$SOCKETS" == "1" ]; then
+    output="cpu0=$CPU0_AVG, cpu0=$CPU0_AVG;$HIGH;$CRIT"
+else
+    output="cpu0=$CPU0_AVG, cpu1=$CPU1_AVG; cpu0=$CPU0_AVG;$HIGH;$CRIT; cpu1=$CPU1_AVG;$HIGH;$CRIT"
+fi
+
+# check CPU avg temperature against WARN/CRIT values
+if [ "${CPU0_AVG}" -gt "${CRIT}" ] || [ "${CPU1_AVG}" -gt "${CRIT}" ]; then
+    echo "CRITICAL - CPUs Temperature: $output"
+    exitstatus=$STATE_CRITICAL
+elif [ "${CPU0_AVG}" -gt "${HIGH}" ] || [ "${CPU1_AVG}" -gt "${HIGH}" ]; then
+    echo "WARNING - CPUs Temperature: $output"
+    exitstatus=$STATE_WARNING
+else
+    echo "OK - CPUs Temperature: $output"
+    exitstatus=$STATE_OK
+fi
+
+exit $exitstatus
